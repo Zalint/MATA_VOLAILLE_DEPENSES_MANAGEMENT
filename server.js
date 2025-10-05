@@ -2328,7 +2328,7 @@ app.get('/api/dashboard/stats', requireAuth, async (req, res) => {
                     AND a.account_type NOT IN ('depot', 'partenaire', 'creance')
                 ) all_credits
                 WHERE credit_amount > 0 OR (credit_amount < 0 AND EXISTS (
-                    SELECT 1 FROM accounts a2 WHERE a2.id = account_id AND a2.account_type = 'statut'
+                    SELECT 1 FROM accounts a2 WHERE a2.id = all_credits.account_id AND a2.account_type = 'statut'
                 ))
                 GROUP BY account_id
             ),
@@ -3982,7 +3982,7 @@ app.get('/api/accounts/:accountName/expenses', requireAuth, async (req, res) => 
                     AND a.account_type NOT IN ('depot', 'partenaire', 'creance')
                 ) all_credits
                 WHERE credit_amount > 0 OR (credit_amount < 0 AND EXISTS (
-                    SELECT 1 FROM accounts a2 WHERE a2.id = account_id AND a2.account_type = 'statut'
+                    SELECT 1 FROM accounts a2 WHERE a2.id = all_credits.account_id AND a2.account_type = 'statut'
                 ))
                 GROUP BY account_id
             ),
@@ -12079,7 +12079,7 @@ app.get('/api/dashboard/monthly-data', requireAuth, async (req, res) => {
                     AND a.account_type NOT IN ('depot', 'partenaire', 'creance')
                 ) all_credits
                 WHERE credit_amount > 0 OR (credit_amount < 0 AND EXISTS (
-                    SELECT 1 FROM accounts a2 WHERE a2.id = account_id AND a2.account_type = 'statut'
+                    SELECT 1 FROM accounts a2 WHERE a2.id = all_credits.account_id AND a2.account_type = 'statut'
                 ))
                 GROUP BY account_id
             ),
