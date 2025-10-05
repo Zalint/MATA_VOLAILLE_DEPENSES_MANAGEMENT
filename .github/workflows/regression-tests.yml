@@ -1,0 +1,95 @@
+name: Tests de Non-Régression
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  regression-tests:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_PASSWORD: bonea2024
+          POSTGRES_USER: zalint
+          POSTGRES_DB: mata_expenses_test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_NAME: mata_expenses_test_db
+      DB_USER: zalint
+      DB_PASSWORD: bonea2024
+      NODE_ENV: test
+
+    steps:
+    - name: 📋 Checkout du code
+      uses: actions/checkout@v4
+
+    - name: 🟢 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: 📦 Installation des dépendances
+      run: npm ci
+
+    - name: 🏗️ Initialisation de la base de données de test
+      run: |
+        # Vérifier que le fichier SQL existe
+        if [ ! -f "github_test_database_setup.sql" ]; then
+          echo "❌ Fichier github_test_database_setup.sql non trouvé"
+          ls -la *.sql
+          exit 1
+        fi
+        
+        echo "✅ Fichier github_test_database_setup.sql trouvé"
+        echo "📝 Taille du fichier:"
+        wc -l github_test_database_setup.sql
+        
+        # Utiliser le script complet de setup de la base de données
+        echo "🔄 Exécution du script de setup..."
+        PGPASSWORD=$DB_PASSWORD psql -h localhost -U $DB_USER -d $DB_NAME -f github_test_database_setup.sql
+        
+        echo "✅ Setup de la base de données terminé"
+
+    - name: 🧪 Exécution des tests de base
+      run: npm run test
+
+    - name: 🧪 Exécution des tests de régression
+      run: npm run test:regression
+
+    - name: 📊 Rapport de couverture
+      run: |
+        echo "✅ Tests de non-régression terminés avec succès!"
+        echo "📋 Résumé:"
+        echo "  • Test 1: Ajout dépense 1000 FCFA"
+        echo "  • Test 2: Suppression dépense 1000 FCFA"
+        echo "  • Test 3: Ajout créance 500 FCFA"
+        echo "  • Test 4: Suppression créance 500 FCFA"  
+        echo "  • Test 5: Ajout transfert 750 FCFA"
+        echo "  • Test 6: Suppression transfert 750 FCFA"
+        echo "  • Test 19: Cohérence colonnes transferts"
+        echo "  • Vérification: Solde actuel = Solde Net"
+        echo "  • Vérification: Audit Flux = Solde Net"
+        echo "  • Vérification: Transferts automatiquement synchronisés"
+
+    - name: 📧 Notification en cas d'échec
+      if: failure()
+      run: |
+        echo "❌ ÉCHEC DES TESTS DE RÉGRESSION!"
+        echo "Les tests de cohérence des comptes ont échoué."
+        echo "Vérifiez les calculs de solde et la logique des transactions."
+        exit 1

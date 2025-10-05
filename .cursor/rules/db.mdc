@@ -1,0 +1,26 @@
+---
+description:
+
+1. DB
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=depenses_management_preprod
+DB_USER=zalint
+DB_PASSWORD=bonea2024
+
+2. J'utilise Windows
+3. ⚠️  INTERDICTION ABSOLUE - PROBLÈME TIMEZONE: 
+   - INTERDIT: new Date(year, month, 1) - CAUSE UN DÉCALAGE DE TIMEZONE
+   - INTERDIT: new Date(2025, 8, 1) - DEVIENT "2025-08-31T20:00:00.000Z" AU LIEU DE "2025-09-01T00:00:00.000Z"
+   - OBLIGATOIRE: Utiliser UNIQUEMENT des chaînes de dates explicites: new Date("2025-09-01T00:00:00")
+   - OBLIGATOIRE: Toujours utiliser des chaînes de dates fixes pour éviter les décalages
+   - SYMPTÔME: Période affichée "31/08/2025 au 04/09/2025" au lieu de "01/09/2025 au 04/09/2025"
+   - RÈGLE: JAMAIS de new Date() avec paramètres numériques, TOUJOURS des chaînes de dates 
+4. Mettre a jour GUIDE_TESTS_NON_REGRESSION.md au fur et a mesure que l'application evolue.
+5. Toujours lire GUIDE_TESTS_NON_REGRESSION.md
+6. psql n'est pas disponible. il faut executer les scripts SQL via Node.js 
+7. Always update github_test_database_setup.sql when the SQLschema change
+
+globs:
+alwaysApply: true
+---
