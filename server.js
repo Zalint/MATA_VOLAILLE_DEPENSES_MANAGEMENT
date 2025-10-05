@@ -1438,8 +1438,8 @@ app.get('/api/user', requireAuth, (req, res) => {
 // Route pour servir les catégories de configuration
 app.get('/api/categories-config', (req, res) => {
     try {
-        const categoriesConfig = require('./categories_config.json');
-        res.json(categoriesConfig);
+        const categoriesData = JSON.parse(fs.readFileSync('categories_config.json', 'utf8'));
+        res.json(categoriesData);
     } catch (error) {
         console.error('Erreur lecture categories_config.json:', error);
         res.status(500).json({ error: 'Erreur serveur' });
@@ -6235,14 +6235,18 @@ app.get('/api/accounts/:accountId/can-credit', requireAuth, async (req, res) => 
 // Route pour obtenir le résumé des livraisons partenaires
 app.get('/api/partner/delivery-summary', requireAuth, async (req, res) => {
     try {
+        console.log('🔍 SERVER: Récupération résumé livraisons partenaires...');
+        
         const result = await pool.query(`
             SELECT * FROM partner_delivery_summary
-            ORDER BY account_name
+            ORDER BY account_id
         `);
+        
+        console.log(`✅ SERVER: ${result.rows.length} entrées trouvées dans partner_delivery_summary`);
         res.json(result.rows);
     } catch (error) {
-        console.error('Erreur récupération résumé livraisons:', error);
-        res.status(500).json({ error: 'Erreur serveur' });
+        console.error('❌ SERVER: Erreur récupération résumé livraisons:', error);
+        res.status(500).json({ error: 'Erreur serveur', details: error.message });
     }
 });
 
@@ -10014,7 +10018,7 @@ app.post('/api/stock-vivant/update', requireStockVivantAuth, async (req, res) =>
                 continue; // Ignorer les entrées incomplètes
             }
 
-            const decoteValue = parseFloat(decote) || 0.20; // Décote par défaut de 20%
+            const decoteValue = parseFloat(decote) || 0.05; // Décote par défaut de 5%
             const total = (parseFloat(quantite) || 0) * (parseFloat(prix_unitaire) || 0) * (1 - decoteValue);
 
             await pool.query(`
@@ -14041,3 +14045,159 @@ app.post('/api/audit/consistency/fix-account/:accountId', requireSuperAdminOnly,
 });
 
 // ====== FIN ROUTES INCOHÉRENCES ======
+
+// ===== ROUTES POUR LA GESTION DES VENTES =====
+
+// Fonction helper pour calculer la semaine
+function getWeekNumber(date) {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+    return `S${weekNo}`;
+}
+
+// Route pour obtenir la configuration des ventes (pas d'auth requise car c'est juste de la config)
+app.get('/api/ventes/config', (req, res) => {
+    try {
+        console.log('📦 Lecture configuration ventes...');
+        const ventesConfig = JSON.parse(fs.readFileSync('ventes_config.json', 'utf8'));
+        console.log('✅ Configuration ventes lue:', ventesConfig);
+        res.json(ventesConfig);
+    } catch (error) {
+        console.error('❌ Erreur lecture configuration ventes:', error);
+        res.status(500).json({ error: 'Erreur serveur', details: error.message });
+    }
+});
+
+// Route pour créer une vente
+app.post('/api/ventes', requireAuth, async (req, res) => {
+    try {
+        const {
+            date_vente, site_production, nom_client, numero_client, 
+            adresse_client, est_creance, produit_id, produit_nom, 
+            prix_unitaire, quantite
+        } = req.body;
+
+        if (!date_vente || !site_production || !produit_id || !produit_nom || !prix_unitaire || !quantite) {
+            return res.status(400).json({ error: 'Champs obligatoires manquants' });
+        }
+
+        const userId = req.session.user.id;
+        const total = parseFloat(prix_unitaire) * parseFloat(quantite);
+        const dateObj = new Date(date_vente);
+        const semaine = getWeekNumber(dateObj);
+        const mois = `${dateObj.getFullYear()}-${(dateObj.getMonth() + 1).toString().padStart(2, '0')}`;
+
+        const result = await pool.query(`
+            INSERT INTO ventes (
+                date_vente, semaine, mois, site_production,
+                nom_client, numero_client, adresse_client, est_creance,
+                produit_id, produit_nom, prix_unitaire, quantite, total, created_by
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            RETURNING *
+        `, [
+            date_vente, semaine, mois, site_production,
+            nom_client || null, numero_client || null, adresse_client || null, est_creance || false,
+            produit_id, produit_nom, prix_unitaire, quantite, total, userId
+        ]);
+
+        if (nom_client && numero_client) {
+            await pool.query(`
+                INSERT INTO ventes_clients (nom_client, numero_client, adresse_client)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (nom_client, numero_client) DO UPDATE SET 
+                    adresse_client = EXCLUDED.adresse_client, updated_at = CURRENT_TIMESTAMP
+            `, [nom_client, numero_client, adresse_client || null]);
+        }
+
+        console.log('✅ Vente créée:', result.rows[0].id);
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        console.error('Erreur création vente:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// Route pour récupérer les ventes
+app.get('/api/ventes', requireAuth, async (req, res) => {
+    try {
+        const { date, site, mois, limit = 50 } = req.query;
+        let query = 'SELECT * FROM ventes WHERE 1=1';
+        const params = [];
+        let paramCount = 1;
+
+        if (date) {
+            query += ` AND date_vente = $${paramCount}`;
+            params.push(date);
+            paramCount++;
+        }
+        if (site) {
+            query += ` AND site_production = $${paramCount}`;
+            params.push(site);
+            paramCount++;
+        }
+        if (mois) {
+            query += ` AND mois = $${paramCount}`;
+            params.push(mois);
+            paramCount++;
+        }
+
+        query += ` ORDER BY date_vente DESC, created_at DESC LIMIT $${paramCount}`;
+        params.push(limit);
+
+        const result = await pool.query(query, params);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Erreur récupération ventes:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// Route pour supprimer une vente
+app.delete('/api/ventes/:id', requireAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.session.user.id;
+        const userRole = req.session.user.role;
+
+        const vente = await pool.query('SELECT * FROM ventes WHERE id = $1', [id]);
+        if (vente.rows.length === 0) {
+            return res.status(404).json({ error: 'Vente non trouvée' });
+        }
+
+        if (vente.rows[0].created_by !== userId && !['admin', 'directeur_general', 'pca'].includes(userRole)) {
+            return res.status(403).json({ error: 'Non autorisé' });
+        }
+
+        await pool.query('DELETE FROM ventes WHERE id = $1', [id]);
+        res.json({ message: 'Vente supprimée avec succès' });
+    } catch (error) {
+        console.error('Erreur suppression vente:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// Route pour rechercher les clients
+app.get('/api/ventes/clients/search', requireAuth, async (req, res) => {
+    try {
+        const { q } = req.query;
+        let query = 'SELECT * FROM ventes_clients';
+        const params = [];
+
+        if (q) {
+            query += ' WHERE nom_client ILIKE $1 OR numero_client ILIKE $1';
+            params.push(`%${q}%`);
+        }
+
+        query += ' ORDER BY nom_client ASC LIMIT 20';
+        const result = await pool.query(query, params);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Erreur recherche clients:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+console.log('✅ Routes ventes chargées');

@@ -6,7 +6,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="theme-color" content="#667eea">
-    <title>MataBanq</title>
+    <title>MataBanq - Volaille</title>
     <link rel="stylesheet" href="styles.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -47,7 +47,7 @@
                     <i class="fas fa-bars"></i>
                 </button>
                 <!--<img src="matabanq_logo.svg" alt="MataBanq Logo" class="app-logo">-->
-                <span class="brand-title">MataBanq</span>
+                <span class="brand-title">MataBanq - Volaille</span>
             </div>
             <div class="nav-user">
                 <span id="user-name"></span>
@@ -94,6 +94,15 @@
                                 <i class="fas fa-history"></i> Historique
                             </a>
                         </li>
+                    </ul>
+                    <!-- 📦 SAISIE DES VENTES -->
+                    <li class="menu-section-title collapsible" data-section-group="ventes-group">
+                        <span><i class="fas fa-shopping-cart"></i> SAISIE DES VENTES <i class="fas fa-chevron-down chevron"></i></span>
+                    </li>
+                    <ul class="section-group" data-group="ventes-group">
+                        <li><a href="#" data-section="saisie-ventes" class="nav-link">
+                            <i class="fas fa-cash-register"></i> Saisie des Ventes
+                        </a></li>
                     </ul>
                     <!-- 💵 GESTION FINANCIÈRE -->
                     <li class="menu-section-title collapsible" data-section-group="finance-group">
@@ -835,6 +844,150 @@
                     </div>
 
                 </section>
+
+                <!-- 📦 Saisie des Ventes -->
+                <section id="saisie-ventes-section" class="section">
+                    <h2>📦 Saisie des Ventes</h2>
+                    
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h3>Nouvelle Vente</h3>
+                        </div>
+                        <div class="card-body">
+                            <form id="vente-form" class="modern-form">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="vente-date">Date *</label>
+                                        <input type="date" id="vente-date" class="form-control" required>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label for="vente-site">Site de Production *</label>
+                                        <select id="vente-site" class="form-control" required>
+                                            <option value="">Sélectionner un site</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+
+
+                                <div class="form-row">
+                                    <div class="form-group" style="grid-column: 1 / -1;">
+                                        <label for="vente-nom-client">Nom Client</label>
+                                        <div class="input-group">
+                                            <input type="text" id="vente-nom-client" class="form-control" placeholder="Nom du client">
+                                            <button type="button" class="btn btn-secondary" id="btn-select-client" style="min-width: auto; padding: 8px 16px;">
+                                                <i class="fas fa-user"></i> Choisir
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="vente-numero-client">Numéro Client</label>
+                                        <input type="text" id="vente-numero-client" class="form-control" placeholder="Ex: 773900000">
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label for="vente-adresse-client">Adresse Client</label>
+                                        <input type="text" id="vente-adresse-client" class="form-control" placeholder="Adresse du client">
+                                    </div>
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="vente-creance">Créance</label>
+                                        <select id="vente-creance" class="form-control">
+                                            <option value="false">Non</option>
+                                            <option value="true">Oui</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="products-section">
+                                    <h4>Produits</h4>
+                                    <div id="vente-products-container">
+                                        <!-- Les lignes de produits seront ajoutées ici dynamiquement -->
+                                    </div>
+                                    <button type="button" class="btn btn-secondary" id="btn-add-product">
+                                        <i class="fas fa-plus"></i> Ajouter un produit
+                                    </button>
+                                </div>
+
+                                <div class="vente-total-section">
+                                    <div class="total-label">Total Général</div>
+                                    <div class="total-amount" id="vente-total-general">0 FCFA</div>
+                                </div>
+
+                                <div class="form-actions">
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-save"></i> Enregistrer
+                                    </button>
+                                    <button type="button" class="btn btn-secondary" id="btn-reset-vente">
+                                        <i class="fas fa-redo"></i> Réinitialiser
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Liste des dernières ventes -->
+                    <div class="card">
+                        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                            <h3>Dernières ventes enregistrées</h3>
+                            <button class="btn btn-success" onclick="exportVentesToExcel()" title="Exporter toutes les ventes en Excel">
+                                <i class="fas fa-file-excel"></i> Exporter Excel
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>Mois</th>
+                                            <th>Date</th>
+                                            <th>Semaine</th>
+                                            <th>Site</th>
+                                            <th>Produit</th>
+                                            <th>Prix Unit.</th>
+                                            <th>Quantité</th>
+                                            <th>Montant</th>
+                                            <th>Nom Client</th>
+                                            <th>Numéro</th>
+                                            <th>Créance</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="ventes-list-tbody">
+                                        <tr>
+                                            <td colspan="12" style="text-align: center;">Aucune vente enregistrée</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Modal de sélection de client -->
+                <div id="client-select-modal" class="modal" style="display: none;">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>Sélectionner un client</h3>
+                            <span class="close" onclick="closeClientSelectModal()">&times;</span>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label for="client-search">Rechercher un client</label>
+                                <input type="text" id="client-search" class="form-control" placeholder="Nom ou numéro...">
+                            </div>
+                            <div id="clients-list" class="clients-list">
+                                <!-- Liste des clients sera chargée ici -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
                 <!-- Créditer Compte (Directeurs avec permissions) -->
                 <section id="credit-account-section" class="section">

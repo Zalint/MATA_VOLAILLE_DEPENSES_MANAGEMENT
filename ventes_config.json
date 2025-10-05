@@ -1,0 +1,37 @@
+{
+  "categorie": "Volaille",
+  "sites_production": [
+    "Pout",
+    "Autres"
+  ],
+  "produits": [
+    {
+      "id": "poulet",
+      "nom": "Poulet",
+      "prix_defaut": 2800,
+      "unite": "unité"
+    },
+    {
+      "id": "tablette",
+      "nom": "Tablette",
+      "prix_defaut": 2300,
+      "unite": "unité"
+    },
+    {
+      "id": "oeuf",
+      "nom": "Oeuf",
+      "prix_defaut": 100,
+      "unite": "unité"
+    },
+    {
+      "id": "poulet_pays",
+      "nom": "Poulet du pays",
+      "prix_defaut": 4000,
+      "unite": "unité"
+    }
+  ],
+  "creance_options": [
+    "Non",
+    "Oui"
+  ]
+}

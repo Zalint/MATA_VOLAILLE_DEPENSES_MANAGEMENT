@@ -346,6 +346,17 @@ async function showSection(sectionName) {
                 showNotification('Erreur lors du chargement de la Visualisation', 'error');
             }
             break;
+            
+        case 'saisie-ventes':
+            console.log('🔄 CLIENT: showSection - saisie-ventes appelé');
+            try {
+                initializeVentesSection();
+                console.log('✅ CLIENT: showSection - saisie-ventes terminé avec succès');
+            } catch (error) {
+                console.error('❌ CLIENT: Erreur dans showSection - saisie-ventes:', error);
+                showNotification('Erreur lors du chargement de Saisie des Ventes', 'error');
+            }
+            break;
     }
 }
 
@@ -365,7 +376,8 @@ function initMenuVisibility() {
         }
     }
     
-    // Menu Montant Début de Mois pour DG, PCA, Admin uniquement
+    // Menu Montant Début de Mois pour DG, PCA, Admin uniquement - DÉSACTIVÉ
+    /* Menu Montant Début de Mois - DÉSACTIVÉ
     if (['directeur_general', 'pca', 'admin'].includes(currentUser.role)) {
         const montantDebutMoisMenu = document.getElementById('montant-debut-mois-menu');
         if (montantDebutMoisMenu) {
@@ -382,6 +394,7 @@ function initMenuVisibility() {
             }
         }
     }
+    */
 }
 
 // Chargement des données initiales
@@ -464,25 +477,30 @@ function initMenuCollapse() {
     const menuSectionTitles = document.querySelectorAll('.menu-section-title');
     
     menuSectionTitles.forEach(title => {
-        title.addEventListener('click', function() {
+        title.addEventListener('click', function(e) {
+            // Toujours cibler le .menu-section-title même si on clique sur un enfant
+            const menuTitle = e.target.closest('.menu-section-title');
+            if (!menuTitle) return;
+            
             // Get the associated section group
-            const sectionGroup = document.querySelector(`.section-group[data-group="${this.getAttribute('data-section-group')}"]`);
+            const sectionGroupName = menuTitle.getAttribute('data-section-group');
+            const sectionGroup = document.querySelector(`.section-group[data-group="${sectionGroupName}"]`);
             if (!sectionGroup) return;
             
             // Toggle collapsed state
-            this.classList.toggle('collapsed');
+            menuTitle.classList.toggle('collapsed');
             sectionGroup.classList.toggle('collapsed');
             
             // Rotate chevron
-            const chevron = this.querySelector('.chevron');
+            const chevron = menuTitle.querySelector('.chevron');
             if (chevron) {
-                chevron.style.transform = this.classList.contains('collapsed') ? 'rotate(-90deg)' : 'rotate(180deg)';
+                chevron.style.transform = menuTitle.classList.contains('collapsed') ? 'rotate(-90deg)' : 'rotate(0deg)';
             }
             
             console.log('Menu section clicked:', {
-                title: this,
+                title: menuTitle,
                 group: sectionGroup,
-                collapsed: this.classList.contains('collapsed')
+                collapsed: menuTitle.classList.contains('collapsed')
             });
         });
     });
@@ -18292,3 +18310,479 @@ function updateValidationStatusUI(statusData) {
         details.textContent = 'Les dépenses peuvent dépasser le solde du compte - Mode libre activé';
     }
 }
+
+// ===== GESTION DES VENTES - CODE JAVASCRIPT =====
+
+// Variables globales pour la configuration
+let ventesConfig = null;
+let ventesProductCounter = 0;
+
+// Charger la configuration des ventes
+async function loadVentesConfig() {
+    try {
+        const response = await fetch(apiUrl('/api/ventes/config'));
+        ventesConfig = await response.json();
+        console.log('✅ Configuration ventes chargée:', ventesConfig);
+        initializeVentesForm();
+    } catch (error) {
+        console.error('❌ Erreur chargement configuration ventes:', error);
+        showNotification('Erreur chargement de la configuration', 'error');
+    }
+}
+
+// Initialiser le formulaire de ventes
+function initializeVentesForm() {
+    // Remplir le dropdown des sites
+    const siteSelect = document.getElementById('vente-site');
+    if (siteSelect && ventesConfig) {
+        siteSelect.innerHTML = '<option value="">Sélectionner un site</option>';
+        ventesConfig.sites_production.forEach(site => {
+            const option = document.createElement('option');
+            option.value = site;
+            option.textContent = site;
+            siteSelect.appendChild(option);
+        });
+    }
+
+    // Définir la date du jour par défaut
+    const dateInput = document.getElementById('vente-date');
+    if (dateInput) {
+        dateInput.value = new Date().toISOString().split('T')[0];
+    }
+
+    // Ajouter une première ligne de produit
+    addProductLine();
+}
+
+// Ajouter une ligne de produit
+function addProductLine() {
+    if (!ventesConfig) return;
+
+    const container = document.getElementById('vente-products-container');
+    const lineId = `product-line-${ventesProductCounter++}`;
+
+    const lineDiv = document.createElement('div');
+    lineDiv.className = 'product-line';
+    lineDiv.id = lineId;
+    lineDiv.innerHTML = `
+        <div class="form-row">
+            <div class="form-group">
+                <label>Catégorie *</label>
+                <input type="text" class="form-control" value="${ventesConfig.categorie}" readonly>
+            </div>
+            
+            <div class="form-group">
+                <label>Produit *</label>
+                <select class="form-control product-select" data-line-id="${lineId}" required>
+                    <option value="">Sélectionner un produit</option>
+                    ${ventesConfig.produits.map(p => `<option value="${p.id}" data-price="${p.prix_defaut}">${p.nom}</option>`).join('')}
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Prix Unit. *</label>
+                <input type="number" class="form-control price-input" data-line-id="${lineId}" min="0" step="0.01" required>
+            </div>
+            
+            <div class="form-group">
+                <label>Quantité *</label>
+                <input type="number" class="form-control quantity-input" data-line-id="${lineId}" min="0" step="1" required>
+            </div>
+            
+            <div class="form-group">
+                <label>Total</label>
+                <div class="total-display" data-line-id="${lineId}">0 FCFA</div>
+            </div>
+            
+            <div class="form-group">
+                <button type="button" class="btn btn-danger btn-sm" onclick="removeProductLine('${lineId}')">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+    `;
+
+    container.appendChild(lineDiv);
+
+    // Ajouter les event listeners
+    const productSelect = lineDiv.querySelector('.product-select');
+    const priceInput = lineDiv.querySelector('.price-input');
+    const quantityInput = lineDiv.querySelector('.quantity-input');
+
+    productSelect.addEventListener('change', (e) => {
+        const selectedOption = e.target.options[e.target.selectedIndex];
+        const defaultPrice = selectedOption.getAttribute('data-price');
+        if (defaultPrice) {
+            priceInput.value = defaultPrice;
+            calculateLineTotal(lineId);
+        }
+    });
+
+    priceInput.addEventListener('input', () => calculateLineTotal(lineId));
+    quantityInput.addEventListener('input', () => calculateLineTotal(lineId));
+}
+
+// Supprimer une ligne de produit
+function removeProductLine(lineId) {
+    const line = document.getElementById(lineId);
+    if (line) {
+        line.remove();
+        calculateGlobalTotal();
+    }
+}
+
+// Calculer le total d'une ligne
+function calculateLineTotal(lineId) {
+    const line = document.getElementById(lineId);
+    if (!line) return;
+
+    const priceInput = line.querySelector('.price-input');
+    const quantityInput = line.querySelector('.quantity-input');
+    const totalDisplay = line.querySelector('.total-display');
+
+    const price = parseFloat(priceInput.value) || 0;
+    const quantity = parseFloat(quantityInput.value) || 0;
+    const total = price * quantity;
+
+    totalDisplay.textContent = formatCurrency(total);
+    calculateGlobalTotal();
+}
+
+// Calculer le total général
+function calculateGlobalTotal() {
+    const container = document.getElementById('vente-products-container');
+    const lines = container.querySelectorAll('.product-line');
+    let grandTotal = 0;
+
+    lines.forEach(line => {
+        const priceInput = line.querySelector('.price-input');
+        const quantityInput = line.querySelector('.quantity-input');
+        const price = parseFloat(priceInput.value) || 0;
+        const quantity = parseFloat(quantityInput.value) || 0;
+        grandTotal += price * quantity;
+    });
+
+    document.getElementById('vente-total-general').textContent = formatCurrency(grandTotal);
+}
+
+// Gérer la soumission du formulaire
+async function handleVenteSubmit(event) {
+    event.preventDefault();
+
+    const date = document.getElementById('vente-date').value;
+    const site = document.getElementById('vente-site').value;
+    const nomClient = document.getElementById('vente-nom-client').value;
+    const numeroClient = document.getElementById('vente-numero-client').value;
+    const adresseClient = document.getElementById('vente-adresse-client').value;
+    const estCreance = document.getElementById('vente-creance').value === 'true';
+
+    const container = document.getElementById('vente-products-container');
+    const lines = container.querySelectorAll('.product-line');
+
+    if (lines.length === 0) {
+        showNotification('Ajoutez au moins un produit', 'error');
+        return;
+    }
+
+    // Créer une vente pour chaque ligne de produit
+    const ventes = [];
+    for (const line of lines) {
+        const productSelect = line.querySelector('.product-select');
+        const priceInput = line.querySelector('.price-input');
+        const quantityInput = line.querySelector('.quantity-input');
+
+        const productId = productSelect.value;
+        const productNom = productSelect.options[productSelect.selectedIndex].text;
+        const prixUnitaire = parseFloat(priceInput.value);
+        const quantite = parseFloat(quantityInput.value);
+
+        if (!productId || !prixUnitaire || !quantite) {
+            showNotification('Veuillez remplir tous les champs obligatoires', 'error');
+            return;
+        }
+
+        ventes.push({
+            date_vente: date,
+            site_production: site,
+            nom_client: nomClient || null,
+            numero_client: numeroClient || null,
+            adresse_client: adresseClient || null,
+            est_creance: estCreance,
+            produit_id: productId,
+            produit_nom: productNom,
+            prix_unitaire: prixUnitaire,
+            quantite: quantite
+        });
+    }
+
+    // Enregistrer toutes les ventes
+    try {
+        for (const vente of ventes) {
+            const response = await fetch(apiUrl('/api/ventes'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(vente)
+            });
+
+            if (!response.ok) {
+                throw new Error('Erreur lors de l\'enregistrement');
+            }
+        }
+
+        showNotification(`${ventes.length} vente(s) enregistrée(s) avec succès`, 'success');
+        resetVenteForm();
+        loadVentesList();
+    } catch (error) {
+        console.error('❌ Erreur enregistrement vente:', error);
+        showNotification('Erreur lors de l\'enregistrement', 'error');
+    }
+}
+
+// Réinitialiser le formulaire
+function resetVenteForm() {
+    document.getElementById('vente-form').reset();
+    document.getElementById('vente-date').value = new Date().toISOString().split('T')[0];
+    document.getElementById('vente-products-container').innerHTML = '';
+    ventesProductCounter = 0;
+    addProductLine();
+    calculateGlobalTotal();
+}
+
+// Charger la liste des ventes
+async function loadVentesList() {
+    try {
+        const response = await fetch(apiUrl('/api/ventes?limit=50'));
+        const ventes = await response.json();
+
+        const tbody = document.getElementById('ventes-list-tbody');
+        tbody.innerHTML = '';
+
+        if (ventes.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="12" style="text-align: center;">Aucune vente enregistrée</td></tr>';
+            return;
+        }
+
+        ventes.forEach(vente => {
+            const row = document.createElement('tr');
+            const date = new Date(vente.date_vente);
+            const mois = date.toLocaleDateString('fr-FR', { month: 'short' });
+
+            row.innerHTML = `
+                <td>${mois}</td>
+                <td>${date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</td>
+                <td>${vente.semaine || '-'}</td>
+                <td>${vente.site_production}</td>
+                <td>${vente.produit_nom}</td>
+                <td>${formatCurrency(vente.prix_unitaire)}</td>
+                <td>${vente.quantite}</td>
+                <td>${formatCurrency(vente.total)}</td>
+                <td>${vente.nom_client || '-'}</td>
+                <td>${vente.numero_client || '-'}</td>
+                <td>${vente.est_creance ? 'Oui' : 'Non'}</td>
+                <td>
+                    <button class="btn btn-danger btn-sm" onclick="deleteVente(${vente.id})">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+    } catch (error) {
+        console.error('❌ Erreur chargement ventes:', error);
+    }
+}
+
+// Supprimer une vente
+async function deleteVente(id) {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cette vente ?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(apiUrl(`/api/ventes/${id}`), {
+            method: 'DELETE'
+        });
+
+        if (response.ok) {
+            showNotification('Vente supprimée avec succès', 'success');
+            loadVentesList();
+        } else {
+            throw new Error('Erreur suppression');
+        }
+    } catch (error) {
+        console.error('❌ Erreur suppression vente:', error);
+        showNotification('Erreur lors de la suppression', 'error');
+    }
+}
+
+// Ouvrir le modal de sélection de client
+function openClientSelectModal() {
+    document.getElementById('client-select-modal').style.display = 'block';
+    loadClients();
+}
+
+// Fermer le modal de sélection de client
+function closeClientSelectModal() {
+    document.getElementById('client-select-modal').style.display = 'none';
+}
+
+// Charger la liste des clients
+async function loadClients(searchQuery = '') {
+    try {
+        const url = searchQuery ? 
+            `/api/ventes/clients/search?q=${encodeURIComponent(searchQuery)}` : 
+            '/api/ventes/clients/search';
+
+        const response = await fetch(apiUrl(url));
+        const clients = await response.json();
+
+        const clientsList = document.getElementById('clients-list');
+        clientsList.innerHTML = '';
+
+        if (clients.length === 0) {
+            clientsList.innerHTML = '<p style="text-align: center; color: #999;">Aucun client trouvé</p>';
+            return;
+        }
+
+        clients.forEach(client => {
+            const clientDiv = document.createElement('div');
+            clientDiv.className = 'client-item';
+            clientDiv.innerHTML = `
+                <div class="client-name">${client.nom_client}</div>
+                <div class="client-details">
+                    ${client.numero_client ? `Tel: ${client.numero_client}` : ''}
+                    ${client.adresse_client ? ` - ${client.adresse_client}` : ''}
+                </div>
+            `;
+            clientDiv.onclick = () => selectClient(client);
+            clientsList.appendChild(clientDiv);
+        });
+    } catch (error) {
+        console.error('❌ Erreur chargement clients:', error);
+    }
+}
+
+// Sélectionner un client
+function selectClient(client) {
+    document.getElementById('vente-nom-client').value = client.nom_client;
+    document.getElementById('vente-numero-client').value = client.numero_client || '';
+    document.getElementById('vente-adresse-client').value = client.adresse_client || '';
+    closeClientSelectModal();
+}
+
+// Initialiser la section ventes
+function initializeVentesSection() {
+    console.log('🔄 Initialisation section ventes...');
+
+    // Event listeners
+    const form = document.getElementById('vente-form');
+    if (form) {
+        form.addEventListener('submit', handleVenteSubmit);
+    }
+
+    const btnAddProduct = document.getElementById('btn-add-product');
+    if (btnAddProduct) {
+        btnAddProduct.addEventListener('click', addProductLine);
+    }
+
+    const btnReset = document.getElementById('btn-reset-vente');
+    if (btnReset) {
+        btnReset.addEventListener('click', resetVenteForm);
+    }
+
+    const btnSelectClient = document.getElementById('btn-select-client');
+    if (btnSelectClient) {
+        btnSelectClient.addEventListener('click', openClientSelectModal);
+    }
+
+    const clientSearch = document.getElementById('client-search');
+    if (clientSearch) {
+        clientSearch.addEventListener('input', (e) => {
+            loadClients(e.target.value);
+        });
+    }
+
+    // Charger la configuration et les ventes
+    loadVentesConfig();
+    loadVentesList();
+
+    console.log('✅ Section ventes initialisée');
+}
+
+// Exporter les ventes en Excel
+async function exportVentesToExcel() {
+    try {
+        console.log('📊 Exportation des ventes en Excel...');
+        showNotification('Préparation de l\'export...', 'info');
+
+        // Récupérer toutes les ventes (limite élevée pour tout exporter)
+        const response = await fetch(apiUrl('/api/ventes?limit=10000'));
+        if (!response.ok) {
+            throw new Error('Erreur lors de la récupération des ventes');
+        }
+        const ventes = await response.json();
+
+        if (ventes.length === 0) {
+            showNotification('Aucune vente à exporter', 'warning');
+            return;
+        }
+
+        // Préparer les données pour Excel
+        const excelData = ventes.map(vente => {
+            const date = new Date(vente.date_vente);
+            return {
+                'Mois': date.toLocaleDateString('fr-FR', { month: 'short' }),
+                'Date': date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+                'Semaine': vente.semaine || '-',
+                'Site': vente.site_production,
+                'Produit': vente.produit_nom,
+                'Prix Unitaire': vente.prix_unitaire,
+                'Quantité': vente.quantite,
+                'Total': vente.total,
+                'Nom Client': vente.nom_client || '-',
+                'Numéro Client': vente.numero_client || '-',
+                'Adresse': vente.adresse_client || '-',
+                'Créance': vente.est_creance ? 'Oui' : 'Non',
+                'Date Création': new Date(vente.created_at).toLocaleDateString('fr-FR')
+            };
+        });
+
+        // Créer le workbook
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(excelData);
+
+        // Définir la largeur des colonnes
+        ws['!cols'] = [
+            { wch: 10 },  // Mois
+            { wch: 12 },  // Date
+            { wch: 10 },  // Semaine
+            { wch: 15 },  // Site
+            { wch: 20 },  // Produit
+            { wch: 12 },  // Prix Unitaire
+            { wch: 10 },  // Quantité
+            { wch: 12 },  // Total
+            { wch: 25 },  // Nom Client
+            { wch: 15 },  // Numéro Client
+            { wch: 30 },  // Adresse
+            { wch: 10 },  // Créance
+            { wch: 15 }   // Date Création
+        ];
+
+        // Ajouter la feuille au workbook
+        XLSX.utils.book_append_sheet(wb, ws, 'Ventes');
+
+        // Générer le nom du fichier avec la date
+        const fileName = `Ventes_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+        // Télécharger le fichier
+        XLSX.writeFile(wb, fileName);
+
+        showNotification(`✅ ${ventes.length} vente(s) exportée(s) avec succès`, 'success');
+        console.log(`✅ Export Excel réussi: ${fileName}`);
+    } catch (error) {
+        console.error('❌ Erreur export Excel:', error);
+        showNotification('Erreur lors de l\'export Excel', 'error');
+    }
+}
+
+console.log('✅ Code ventes chargé');
