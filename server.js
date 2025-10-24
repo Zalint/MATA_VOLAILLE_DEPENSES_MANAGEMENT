@@ -2375,6 +2375,18 @@ app.get('/api/dashboard/stats', requireAuth, async (req, res) => {
                                 
                                 UNION ALL
                                 
+                                SELECT montant as amount, created_at::date as transaction_date, created_at as original_timestamp, id as record_id
+                                FROM transfer_history 
+                                WHERE destination_id = a.id AND created_at <= ($2::date + INTERVAL '1 day')
+                                
+                                UNION ALL
+                                
+                                SELECT -montant as amount, created_at::date as transaction_date, created_at as original_timestamp, id as record_id
+                                FROM transfer_history 
+                                WHERE source_id = a.id AND created_at <= ($2::date + INTERVAL '1 day')
+                                
+                                UNION ALL
+                                
                                 SELECT montant as amount, ('2025-01-01')::DATE as transaction_date, ('2025-01-01')::timestamp as original_timestamp, 0 as record_id
                                 FROM montant_debut_mois 
                                 WHERE account_id = a.id
@@ -2403,6 +2415,18 @@ app.get('/api/dashboard/stats', requireAuth, async (req, res) => {
                                 SELECT -total as amount, expense_date::date as transaction_date, expense_date as original_timestamp, id as record_id
                                 FROM expenses 
                                 WHERE account_id = a.id AND expense_date <= ($2::date + INTERVAL '1 day')
+                                
+                                UNION ALL
+                                
+                                SELECT montant as amount, created_at::date as transaction_date, created_at as original_timestamp, id as record_id
+                                FROM transfer_history 
+                                WHERE destination_id = a.id AND created_at <= ($2::date + INTERVAL '1 day')
+                                
+                                UNION ALL
+                                
+                                SELECT -montant as amount, created_at::date as transaction_date, created_at as original_timestamp, id as record_id
+                                FROM transfer_history 
+                                WHERE source_id = a.id AND created_at <= ($2::date + INTERVAL '1 day')
                                 
                                 UNION ALL
                                 
@@ -14123,7 +14147,7 @@ app.post('/api/ventes', requireAuth, async (req, res) => {
 // Route pour récupérer les ventes
 app.get('/api/ventes', requireAuth, async (req, res) => {
     try {
-        const { date, site, mois, limit = 50 } = req.query;
+        const { date, site, mois, date_debut, date_fin, client, limit = 50 } = req.query;
         let query = 'SELECT * FROM ventes WHERE 1=1';
         const params = [];
         let paramCount = 1;
@@ -14131,6 +14155,16 @@ app.get('/api/ventes', requireAuth, async (req, res) => {
         if (date) {
             query += ` AND date_vente = $${paramCount}`;
             params.push(date);
+            paramCount++;
+        }
+        if (date_debut) {
+            query += ` AND date_vente >= $${paramCount}`;
+            params.push(date_debut);
+            paramCount++;
+        }
+        if (date_fin) {
+            query += ` AND date_vente <= $${paramCount}`;
+            params.push(date_fin);
             paramCount++;
         }
         if (site) {
@@ -14143,11 +14177,20 @@ app.get('/api/ventes', requireAuth, async (req, res) => {
             params.push(mois);
             paramCount++;
         }
+        if (client) {
+            query += ` AND nom_client = $${paramCount}`;
+            params.push(client);
+            paramCount++;
+        }
 
         query += ` ORDER BY date_vente DESC, created_at DESC LIMIT $${paramCount}`;
         params.push(limit);
 
+        console.log('🔍 Requête ventes:', query);
+        console.log('📊 Paramètres:', params);
+
         const result = await pool.query(query, params);
+        console.log(`✅ ${result.rows.length} ventes récupérées`);
         res.json(result.rows);
     } catch (error) {
         console.error('Erreur récupération ventes:', error);
