@@ -14147,7 +14147,7 @@ app.post('/api/ventes', requireAuth, async (req, res) => {
 // Route pour récupérer les ventes
 app.get('/api/ventes', requireAuth, async (req, res) => {
     try {
-        const { date, site, mois, date_debut, date_fin, client, limit = 50 } = req.query;
+        const { date, site, mois, date_debut, date_fin, client, limit = 10000 } = req.query;
         let query = 'SELECT * FROM ventes WHERE 1=1';
         const params = [];
         let paramCount = 1;
