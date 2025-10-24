@@ -18705,6 +18705,10 @@ function initializeVentesSection() {
     // Charger la configuration et les ventes
     loadVentesConfig();
     loadVentesList();
+    
+    // Charger les clients pour le filtre et les statistiques
+    loadFilterClients();
+    loadVentesStats();
 
     console.log('✅ Section ventes initialisée');
 }
@@ -18782,6 +18786,149 @@ async function exportVentesToExcel() {
     } catch (error) {
         console.error('❌ Erreur export Excel:', error);
         showNotification('Erreur lors de l\'export Excel', 'error');
+    }
+}
+
+// ===== FILTRAGE DES VENTES =====
+
+// Charger les clients dans le dropdown de filtres
+async function loadFilterClients() {
+    try {
+        const response = await fetch(apiUrl('/api/ventes/clients/search'));
+        const clients = await response.json();
+        
+        const select = document.getElementById('filter-client');
+        if (!select) return;
+        
+        select.innerHTML = '<option value="">Tous les clients</option>';
+        
+        // Créer un ensemble de clients uniques
+        const uniqueClients = [...new Map(clients.map(c => [c.nom_client, c])).values()];
+        
+        uniqueClients.forEach(client => {
+            if (client.nom_client) {
+                const option = document.createElement('option');
+                option.value = client.nom_client;
+                option.textContent = client.nom_client;
+                select.appendChild(option);
+            }
+        });
+    } catch (error) {
+        console.error('❌ Erreur chargement clients pour filtre:', error);
+    }
+}
+
+// Appliquer les filtres sur les ventes
+async function applyVentesFilters() {
+    try {
+        const dateDebut = document.getElementById('filter-date-debut').value;
+        const dateFin = document.getElementById('filter-date-fin').value;
+        const clientNom = document.getElementById('filter-client').value;
+        
+        console.log('🔍 Application des filtres:', { dateDebut, dateFin, clientNom });
+        
+        // Construire l'URL avec les paramètres de filtre
+        let url = '/api/ventes?limit=10000';
+        const params = [];
+        if (dateDebut) params.push(`date_debut=${dateDebut}`);
+        if (dateFin) params.push(`date_fin=${dateFin}`);
+        if (clientNom) params.push(`client=${encodeURIComponent(clientNom)}`);
+        
+        if (params.length > 0) {
+            url += '&' + params.join('&');
+        }
+        
+        const response = await fetch(apiUrl(url));
+        const ventes = await response.json();
+        
+        // Afficher les ventes filtrées
+        displayFilteredVentes(ventes);
+        
+        // Mettre à jour les statistiques
+        updateFilterStats(ventes);
+        
+        showNotification(`📊 ${ventes.length} vente(s) filtrée(s)`, 'info');
+    } catch (error) {
+        console.error('❌ Erreur filtrage ventes:', error);
+        showNotification('Erreur lors du filtrage', 'error');
+    }
+}
+
+// Afficher les ventes filtrées
+function displayFilteredVentes(ventes) {
+    const tbody = document.getElementById('ventes-list-tbody');
+    tbody.innerHTML = '';
+    
+    if (ventes.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="12" style="text-align: center;">Aucune vente trouvée avec ces filtres</td></tr>';
+        return;
+    }
+    
+    ventes.forEach(vente => {
+        const row = document.createElement('tr');
+        const date = new Date(vente.date_vente);
+        const mois = date.toLocaleDateString('fr-FR', { month: 'short' });
+        
+        row.innerHTML = `
+            <td>${mois}</td>
+            <td>${date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</td>
+            <td>${vente.semaine || '-'}</td>
+            <td>${vente.site_production}</td>
+            <td>${vente.produit_nom}</td>
+            <td>${formatCurrency(vente.prix_unitaire)}</td>
+            <td>${vente.quantite}</td>
+            <td>${formatCurrency(vente.total)}</td>
+            <td>${vente.nom_client || '-'}</td>
+            <td>${vente.numero_client || '-'}</td>
+            <td>${vente.est_creance ? 'Oui' : 'Non'}</td>
+            <td>
+                <button class="btn btn-danger btn-sm" onclick="deleteVente(${vente.id})">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+// Mettre à jour les statistiques de filtrage
+function updateFilterStats(ventes) {
+    const countSpan = document.getElementById('filter-count');
+    const totalSpan = document.getElementById('filter-total');
+    
+    if (countSpan) {
+        countSpan.textContent = ventes.length;
+    }
+    
+    if (totalSpan) {
+        const total = ventes.reduce((sum, v) => sum + parseFloat(v.total || 0), 0);
+        totalSpan.textContent = total.toLocaleString('fr-FR');
+    }
+}
+
+// Réinitialiser les filtres
+function clearVentesFilters() {
+    document.getElementById('filter-date-debut').value = '';
+    document.getElementById('filter-date-fin').value = '';
+    document.getElementById('filter-client').value = '';
+    
+    // Recharger toutes les ventes
+    loadVentesList();
+    
+    // Réinitialiser les stats
+    loadVentesStats();
+    
+    showNotification('Filtres réinitialisés', 'info');
+}
+
+// Charger les statistiques globales des ventes
+async function loadVentesStats() {
+    try {
+        const response = await fetch(apiUrl('/api/ventes?limit=10000'));
+        const ventes = await response.json();
+        updateFilterStats(ventes);
+    } catch (error) {
+        console.error('❌ Erreur chargement stats ventes:', error);
     }
 }
 
